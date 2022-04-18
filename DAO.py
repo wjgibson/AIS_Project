@@ -3,13 +3,17 @@ import mysql.connector
 from mysql.connector import errorcode
 
 import sys
-import operator
 from datetime import *
+
 import json
+
 
 ## Modify to fit your configuration
 USER='wjgib'
 PASSWORD='Oliver'
+
+file = open('sample_input.json')
+batch = json.load(file)
 
 class SQL_runner():
     """
@@ -27,14 +31,14 @@ class SQL_runner():
     
         except mysql.connector.Error as err:
             if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-                print("Something is wrong with your user name or password")
+                print("Username or Password is incorrect")
             elif err.errno == errorcode.ER_BAD_DB_ERROR:
                 print("Database does not exist")
             else:
                 print(err)
 
         if not self.cnx:
-            sys.exit("Connection failed: exiting.")
+            sys.exit("Connection failed...exiting...")
 
     def __del__(self):
         if self.cnx is not None:
@@ -42,65 +46,57 @@ class SQL_runner():
             self.cnx.close()
 
     
-    def run(self, query ):
-        """ Run a query
-        :param query: an SQL query
+    def run(self, statement ):
+        """ Run any SQL statement
+        :param query: a SQL statement 
         :type query: str
-        :return: the result set as Python list of tuples
-        :rtype: list
         """
         cursor = self.cnx.cursor()
-        cursor.execute(  query )
-        result = cursor.fetchall()
+        cursor.execute( statement )
         cursor.close()
 
-        return result
 
-class DAO:
+class DAO():
+    
+    def __init__( self, stub=False ):
+        self.is_stub=stub
 
-    def insert_message_batch( self, batch ):
-        """
-        Insert a batch of messages
-
-        :param batch: an array of AIS messages (objects)
-        :type batch: list 
-        :return: Number of successful insertions
-        :rtype: int
-        """
+    def insert_message_batch( self, batch ): #Testing began
         if type( batch ) is str:
             print("Incorrect parameter type: should be a list of messages")
             return -1
         if self.is_stub:
-            return len(batch)
+            return len( batch )
 
-        #WHY IS THIS WRONG?
-        cursor=SQL_runner ( USER,PASSWORD, 127.0.0.1, db='aistestdata')
-
-        inserted = 0
+        SQL_runner( USER, PASSWORD, db='aistestdata' )
         
+        inserted = 0
+        cursor = SQL_runner
+
         for msg in batch:
-            
-            if msg['MsgType']=='position_report':
+
+            if msg[ 'MsgType' ] == 'position_report':
                 pr = PositionReport( msg )
 
             try:
                 query = "insert into AIS_MESSAGE values {}".format( pr.to_shared_sql_values() )
                 print(query)
-                cursor.execute(query)
+                cursor.run(query)
                 
                 pr.id = cursor.lastrowid
 
                 query = "insert into POSITION_REPORT VALUES {}".format( pr.to_position_report_sql_values() )
-                print(query)
-                cursor.execute(query)
-                print(f"INSERTED: {cursor.rowcount}")
+                #print(query)
+                cursor.run(query)
+                #print(f"INSERTED: {cursor.rowcount}")
 
-                con.commit()
                 inserted += cursor.rowcount
             except Exception as e:
                 print(e)
-            
+                
         return inserted
+    
+            
 
 class Message:
 
@@ -114,7 +110,7 @@ class Message:
         return "(NULL, '{}', {}, '{}', NULL)".format( self.timestamp, self.mmsi, self.equiptclass )
 
 
-class PositionReport( Message ):
+class PositionReport( Message ): #Testing Complete
 
     def __init__(self, msg):
 
@@ -134,3 +130,53 @@ class PositionReport( Message ):
         if not self.id: # without a valid key, no output
             return None
         return f"({self.id}, '{self.status}', {self.longitude}, {self.latitude}, {self.rot}, {self.sog}, {self.cog}, {self.heading},NULL,NULL,NULL,NULL)"
+
+        
+
+class TMB_test(unittest.TestCase):
+    
+    batch = """[ {\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"Class A\",\"MMSI\":304858000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[55.218332,13.371672]},\"Status\":\"Under way using engine\",\"SoG\":10.8,\"CoG\":94.3,\"Heading\":97},
+                {\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"AtoN\",\"MMSI\":992111840,\"MsgType\":\"static_data\",\"IMO\":\"Unknown\",\"Name\":\"WIND FARM BALTIC1NW\",\"VesselType\":\"Undefined\",\"Length\":60,\"Breadth\":60,\"A\":30,\"B\":30,\"C\":30,\"D\":30},
+                {\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"Class A\",\"MMSI\":219005465,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[54.572602,11.929218]},\"Status\":\"Under way using engine\",\"RoT\":0,\"SoG\":0,\"CoG\":298.7,\"Heading\":203},
+                {\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"Class A\",\"MMSI\":257961000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[55.00316,12.809015]},\"Status\":\"Under way using engine\",\"RoT\":0,\"SoG\":0.2,\"CoG\":225.6,\"Heading\":240},
+                {\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"Class A\",\"MMSI\":376503000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[54.519373,11.47914]},\"Status\":\"Under way using engine\",\"RoT\":0,\"SoG\":7.6,\"CoG\":294.4,\"Heading\":290} ]"""
+
+    def test_insert_message_batch_interface_1( self  ):
+        """
+        Function `insert_message_batch` takes an array of messages as an input.
+        """
+        tmb = DAO(True) 
+        array = json.loads( self.batch )
+        inserted_count = tmb.insert_message_batch( array )
+        self.assertTrue( type(inserted_count) is  int and inserted_count >=0) 
+
+    def test_insert_message_batch_interface_2( self  ):
+        """
+        Function `insert_message_batch` fails nicely if input is still a string
+        """
+        tmb = DAO(True) 
+        inserted_count = tmb.insert_message_batch( self.batch )
+        self.assertEqual( inserted_count, -1) 
+
+
+    def test_insert_message_batch( self  ):
+        """
+        Function `insert_message_batch` inserts messages in the MySQL table
+        """
+        tmb = DAO()
+        array = json.loads( self.batch )
+        inserted_count = tmb.insert_message_batch( array )
+        self.assertTrue( type(inserted_count) is  int and inserted_count >=0) 
+
+
+    def test_position_report_creation( self ):
+
+        pr = {"Timestamp":"2020-11-18T00:00:00.000Z","Class":"Class A","MMSI":304858000,"MsgType":"position_report","Position":{"type":"Point","coordinates":[55.218332,13.371672]},"Status":"Under way using engine","SoG":10.8,"CoG":94.3,"Heading":97}
+        
+        tmb = DAO(True)
+        pr = PositionReport( pr )  
+        self.assertEqual( pr.timestamp, "2020-11-18 00:00:00.000")
+
+if __name__ == '__main__':
+    unittest.main()
+

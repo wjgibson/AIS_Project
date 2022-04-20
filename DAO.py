@@ -1,3 +1,4 @@
+from sqlite3 import Cursor
 import unittest
 import mysql.connector
 from mysql.connector import errorcode
@@ -12,13 +13,10 @@ import json
 USER='wjgib'
 PASSWORD='Oliver'
 
-file = open('sample_input.json')
-batch = json.load(file)
+#file = open('sample_input.json')
+#batch = json.load(file)
 
 class SQL_runner():
-    """
-    A SQL connector
-    """
 
     def __init__(self, user, pw, host='127.0.0.1', db=''):
 
@@ -45,15 +43,21 @@ class SQL_runner():
             print("Closing database connection")
             self.cnx.close()
 
-    
-    def run(self, statement ):
-        """ Run any SQL statement
-        :param query: a SQL statement 
+    def run(self, query ):
+        """ Run a query
+        :param query: an SQL query
         :type query: str
+        :return: the result set as Python list of tuples
+        :rtype: list
         """
         cursor = self.cnx.cursor()
-        cursor.execute( statement )
+        cursor.execute(  query )
+        result = cursor.fetchall()
         cursor.close()
+
+        return result
+
+        
 
 
 class DAO():
@@ -61,17 +65,26 @@ class DAO():
     def __init__( self, stub=False ):
         self.is_stub=stub
 
-    def insert_message_batch( self, batch ): #Testing began
+    cnx = SQL_runner( USER, PASSWORD, db='aistestdata' )
+
+    def deploy_database(self):
+        deployment="""
+        drop database if exists aisproject;
+        create databse aisproject;
+        use aisproject;
+        """
+        self.cnx.run("drop database if exists aisproject;create databse aisproject;use aisproject;")
+        
+
+    def insert_message_batch( self, batch ): #Testing complete
         if type( batch ) is str:
             print("Incorrect parameter type: should be a list of messages")
             return -1
         if self.is_stub:
             return len( batch )
-
-        SQL_runner( USER, PASSWORD, db='aistestdata' )
         
         inserted = 0
-        cursor = SQL_runner
+    
 
         for msg in batch:
 
@@ -79,23 +92,36 @@ class DAO():
                 pr = PositionReport( msg )
 
             try:
-                query = "insert into AIS_MESSAGE values {}".format( pr.to_shared_sql_values() )
-                print(query)
-                cursor.run(query)
-                
-                pr.id = cursor.lastrowid
-
-                query = "insert into POSITION_REPORT VALUES {}".format( pr.to_position_report_sql_values() )
+                query = "insert into AIS_MESSAGE values {};".format( pr.to_shared_sql_values() )
                 #print(query)
-                cursor.run(query)
+                self.cursor.run(query)
+                
+                pr.id = self.cursor.lastrowid
+
+                query = "insert into POSITION_REPORT VALUES {};".format( pr.to_position_report_sql_values() )
+                #print(query)
+                self.cursor.run(query)
                 #print(f"INSERTED: {cursor.rowcount}")
 
-                inserted += cursor.rowcount
+                inserted += self.cursor.rowcount
             except Exception as e:
                 print(e)
                 
         return inserted
-    
+
+    def delete_old_data(self):
+        pass
+
+    def MMSI_position_lookup(self, MMSI):
+        try:
+            query="select Timestamp from AIS_MESSAGE where MMSI={} limit 1;".format(MMSI)
+            print(query)
+            cursor = SQL_runner
+            cursor.run(query)
+            result = cursor.fetchall()
+            return result
+        except Exception as e:
+            print(e)
             
 
 class Message:
@@ -177,6 +203,15 @@ class TMB_test(unittest.TestCase):
         pr = PositionReport( pr )  
         self.assertEqual( pr.timestamp, "2020-11-18 00:00:00.000")
 
-if __name__ == '__main__':
-    unittest.main()
+    def delete_old_records(self):
+        pass
 
+    def test_MMSI_lookup(self):
+        tmb = DAO()
+        timestamp=tmb.MMSI_position_lookup(219007155)
+        self.assertEqual(timestamp,"2020-11-18 00:00:00")
+
+if __name__ == '__main__':
+    db = DAO()
+    db.deploy_database
+    unittest.main()

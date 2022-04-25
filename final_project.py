@@ -147,16 +147,16 @@ class DAO():
     #Attempt: select MMSI, latitude, longitude, AISIMO, name from ais_message, position_report, static_data 
     # where ais_message.id=position_report.AISMessage_Id and position_report.AISMessage_id=static_data.AISMessage_Id limit 10;
     #results in an empty set?
-    def read_vessel_info(self, MMSI, IMO, name):
+    def read_vessel_info(self, MMSI=None, IMO=None, name=None):
         pass
 
-    def read_recent_positions_given_tile(self, tile_id):
+    def read_recent_positions_given_tile(self, tile_id=None):
         pass
 
-    def read_all_ports_matching_name(self, port_name, country):
+    def read_all_ports_matching_name(self, port_name=None, country=None):
         pass
 
-    def read_recent_positions_given_tile_and_port(self, port_name, country):
+    def read_recent_positions_given_tile_and_port(self, port_name=None, country=None):
         pass
 
     def read_last_five_positions_given_MMSI(self, MMSI):
@@ -175,16 +175,16 @@ class DAO():
         #print(results)
         return results
 
-    def read_recent_ship_positions_headed_to_port_ID(self, port_id):
+    def read_recent_ship_positions_headed_to_port_ID(self, port_id=None):
         pass
 
-    def read_recent_ship_positions_headed_to_port(self, port_name, country):
+    def read_recent_ship_positions_headed_to_port(self, port_name=None, country=None):
         pass
 
-    def lookup_contained_tiles(self, tile_id):
+    def lookup_contained_tiles(self, tile_id=None):
         pass
 
-    def get_tile_PNG(self, tile_id):
+    def get_tile_PNG(self, tile_id=None):
         pass
 
             

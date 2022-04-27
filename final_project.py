@@ -6,8 +6,8 @@ import sys
 from datetime import datetime
 
 #Replace these with your credentials
-username = "wjgib"
-password = "Oliver"
+username = "lingj"
+password = "rose"
 
 class DAO():
 
@@ -286,7 +286,16 @@ class DAO():
     # where ais_message.id=position_report.AISMessage_Id and position_report.AISMessage_id=static_data.AISMessage_Id limit 10;
     #results in an empty set?
     def read_vessel_info(self, MMSI, IMO='', name=''):
-        pass
+        query = """
+        select MMSI, latitude, longitude, AISIMO, name 
+        from ais_message, position_report, static_data 
+        where ais_message.id=position_report.AISMessage_Id
+        limit 10;"""
+
+        document= self.run(query)
+        results = [tuple(str(item) for item in t) for t in document]
+
+        return results
 
     def read_recent_positions_given_tile(self, tile_id):
         pass
@@ -314,7 +323,15 @@ class DAO():
         return results
 
     def read_recent_positions_given_tile_and_port(self, port_name, country=''):
-        pass
+        if port_name == '' and country != '':
+            query = """select distinct port.name, MMSI, rpt.latitude, rpt.longitude, msg.Vessel_IMO, scale 
+            from ais_message as msg, position_report as rpt, map_view as map, port 
+            where msg.id=rpt.aisMessage_id and scale=3 and port.country='{}' limit 10;""". format(port_name)
+
+        if port_name != '' and country == '':
+            query = """select distinct port.name, MMSI, rpt.latitude, rpt.longitude, msg.Vessel_IMO, scale 
+            from ais_message as msg, position_report as rpt, map_view as map, port 
+            where msg.id=rpt.aisMessage_id and scale=3 and port.name='{}' limit 100;""". format(port_name)
 
     def read_last_five_positions_given_MMSI(self, MMSI):
         """
@@ -349,7 +366,7 @@ class DAO():
     def lookup_contained_tiles(self, tile_id):
         pass
 
-    def get_tile_PNG(self, tile_id):
+    def get_tile_PNG(self, tile_id): 
         pass
 
             
@@ -504,10 +521,15 @@ class TMB_test(unittest.TestCase):
         tmb = DAO()
         result = tmb.read_all_ports_matching_name(port_name='Ensted')
         self.assertEqual(result, [('4378', 'Ensted', 'Denmark', '55.022778', '9.439167')])
-    """
-    def test_read_vessel_info(self):
-        pass
 
+    def test_read_vessel_info_integration(self):
+        """
+        Function 'read_vessel_info' returns the result of the query as an array
+        """
+        tmb = DAO()
+        result = tmb.read_vessel_info()
+        self.assertEqual(result, [()])
+"""
     def test_delete_old_message(self):
         pass
 

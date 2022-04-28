@@ -1,6 +1,7 @@
 from distutils.log import error
 import json
 import unittest
+from unittest import result
 import mysql.connector
 from mysql.connector import errorcode
 import sys
@@ -265,9 +266,9 @@ class DAO():
         where position_report.aismessage_id=ais_message.id and MMSI={};""".format(MMSI)
 
         document = self.run(query)
-        results = [tuple(str(item) for item in t) for t in document]
-        #print(results)
-        return results
+        result = [tuple(str(item) for item in t) for t in document]
+        return result
+        
 
     def read_all_recent_ship_positions(self):
         """
@@ -314,7 +315,20 @@ class DAO():
 
     #DONE
     def read_recent_positions_given_tile(self, tile_id):
-        pass
+        if type(tile_id) != str:
+            print("Error: type of tile id must be a string. Returning empty string...")
+            return ""
+
+        query = """select Distinct MMSI, Longitude, Latitude,Max(Timestamp) 
+        from map_view as mv,position_report as pr,ais_message as msg 
+        where msg.Id = pr.AISMessage_Id and Longitude between (select LongitudeW from map_view where Name = "{}") 
+        and (select LongitudeE from map_view where Name = "{}") 
+        and Latitude between (select LatitudeS from map_view where Name ="{}") 
+        and (select LatitudeN from map_view where Name ="{}");""".format(tile_id, tile_id, tile_id, tile_id)
+
+        document = self.run(query)
+        results = [tuple(str(item) for item in t) for t in document]
+        return results
 
     def read_all_ports_matching_name(self, port_name='', country=''):
         """
@@ -391,22 +405,38 @@ class DAO():
         return results
 
     def read_recent_ship_positions_headed_to_port_ID(self, port_id):
-        pass
+        query = """select distinct port.id, MMSI, rpt.latitude, rpt.longitude, Vessel_IMO 
+        from ais_message, static_data, position_report as rpt, port 
+        where ais_message.id=static_data.AISMessage_id and static_data.AISDestination=port.name and port.id={} limit 100;""".format(port_id)
+
+        document = self.run(query)
+        results = [tuple(str(item) for item in t) for t in document]
+        return results
 
     def read_recent_ship_positions_headed_to_port(self, port_name, country=''):
         pass
 
-    #DONE
     def lookup_contained_tiles(self, tile_id):
-        pass
+        if type(tile_id) != int:
+            print("Error: type of tile_id must be an integer. Returning empty string...")
+            return ""
 
-    #DONE
+        query = "select map_view.id from map_view where ContainerMapView_id={};".format(tile_id)
+
+        document = self.run(query)
+        results = [tuple(str(item) for item in t) for t in document]
+        return results
+
     def get_tile_PNG(self, tile_id):
-        pass
+        if type(tile_id) != int:
+            print("Error: type of tile_id must be an integer. Returning empty string...")
+            return ""
 
-            
+        query = "select RasterFile from map_view where id={};".format(tile_id)
 
-
+        document = self.run(query)
+        results = [tuple(str(item) for item in t) for t in document]
+        return results
 
 #These classes extract data from a json file and format it to be inserted into a database.
 class Message:
@@ -617,24 +647,32 @@ class TMB_test(unittest.TestCase):
         tmb = DAO()
         result = tmb.read_vessel_info(304858000, IMO=8214358, name='St.Pauli')
         self.assertEqual(result, [('304858000', '55.185158', '14.195187', '8214358')])
+
+    ####################################################################################
+    def test_read_recent_positions_given_tile_interface(self):
+        tmb = DAO(True)
+        result=tmb.read_recent_positions_given_tile(234)
+        self.assertEqual(result, "")
+    
+    def test_read_recent_positions_given_tile_integration(self):
+        tmb = DAO()
+        result = tmb.read_recent_positions_given_tile("38F7")
+        self.assertEqual(result[0], ('664444000', '7.036235', '54.702618', '2020-11-18 00:28:15'))
+
+    def test_lookup_contained_tiles(self):
+        pass
+
+    def test_get_tile_PNG(self):
+        pass
 """
 
     def test_delete_old_message(self):
-        pass
-
-    def test_read_recent_positions_given_tile(self):
         pass
 
     def test_read_recent_ship_positions_headed_to_port_ID(self):
         pass
 
     def test_read_recent_ship_positions_headed_to_port(self):
-        pass
-
-    def test_lookup_contained_tiles(self):
-        pass
-
-    def test_get_tile_PNG(self):
         pass
 """
 

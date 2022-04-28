@@ -1,3 +1,4 @@
+from distutils.log import error
 import json
 import unittest
 import mysql.connector
@@ -6,18 +7,17 @@ import sys
 from datetime import datetime
 
 #Replace these with your credentials
-username = "lingj"
-password = "rose"
+username = "wjgib"
+password = "Oliver"
 
 class DAO():
 
-    #Replace database with AIS_PROJECT before submission
     def __init__( self, stub=False ):
         self.is_stub=stub
         self.connection = ''
 
         try:
-            self.connection = mysql.connector.connect(host="localhost",user=username,password=password,database="aistestdata")
+            self.connection = mysql.connector.connect(host="localhost",user=username,password=password, database='aistestdata')
 
         except mysql.connector.Error as err:
             if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
@@ -30,6 +30,22 @@ class DAO():
         if not self.connection:
             sys.exit("Connection failed: exiting.")
 
+    def run(self, query):
+        """
+        Run any query
+        :param query: an SQL query
+        :type query: str
+        :return: the result set as Python list of tuples
+        :rtype: list
+        """
+        mycursor = self.connection.cursor()
+        mycursor.execute(query)
+        result = mycursor.fetchall()
+        mycursor.close()
+        
+        return result
+
+    #will be deployed by a sqldump file. Only needs the "use ais_project" statement.
     def deploy_database(self):
         deploy_statement = """
         DROP DATABASE IF EXISTS AIS_PROJECT;
@@ -44,7 +60,7 @@ class DAO():
         DROP TABLE IF EXISTS VESSEL;
 
         CREATE TABLE VESSEL(
-            IMO MEDIUMINT UNISGNED NOT NULL,
+            IMO MEDIUMINT UNSIGNED NOT NULL,
             Flag VARCHAR(40),
             Name VARCHAR(40),
             Built SMALLINT,
@@ -66,7 +82,7 @@ class DAO():
             Class ENUM('Class A','Class B','AtoN','Base Station','SAR Airborne','Search and Rescue Transponder','Man Overboard Device'),
             Vessel_IMO MEDIUMINT UNSIGNED,
             PRIMARY KEY(ID),
-            FORIEGN KEY(Vessel_IMO) REFERENCES VESSEL(IMO)
+            FOREIGN KEY(Vessel_IMO) REFERENCES VESSEL(IMO)
         );
 
         CREATE TABLE MAP_VIEW(
@@ -101,9 +117,9 @@ class DAO():
             MapView2_ID MEDIUMINT,
             MapView3_ID MEDIUMINT,
             PRIMARY KEY(ID),
-            FORIEGN KEY(MapView1_ID) REFERENCES MAP_VIEW(ID),
-            FORIEGN KEY(MapView2_ID) REFERENCES MAP_VIEW(ID),
-            FORIEGN KEY(MapView3_ID) REFERENCES MAP_VIEW(ID)
+            FOREIGN KEY(MapView1_ID) REFERENCES MAP_VIEW(ID),
+            FOREIGN KEY(MapView2_ID) REFERENCES MAP_VIEW(ID),
+            FOREIGN KEY(MapView3_ID) REFERENCES MAP_VIEW(ID)
         );
 
         CREATE TABLE STATIC_DATA(
@@ -120,7 +136,7 @@ class DAO():
             ETA DATETIME,
             DestinationPort_ID SMALLINT,
             PRIMARY KEY(AISMessage_ID),
-            FORIEGN KEY(AISMessage_ID) REFERENCES AIS_MESSAGE(ID),
+            FOREIGN KEY(AISMessage_ID) REFERENCES AIS_MESSAGE(ID),
             FOREIGN KEY(DestinationPort_ID) REFERENCES PORT(ID)
         );
         
@@ -138,29 +154,15 @@ class DAO():
             MapView2_ID MEDIUMINT,
             MapView3_ID MEDIUMINT,
             PRIMARY KEY(AISMessage_ID),
-            FORIEGN KEY(AISMessage_ID) REFERENCES AIS_MESSAGE(ID),
-            FOREIGN KEY(LastStaticData_ID) REFERENCES STATIC_DATA(ID),
-            FORIEGN KEY(MapView1_ID) REFERENCES MAP_VIEW(ID),
-            FORIEGN KEY(MapView2_ID) REFERENCES MAP_VIEW(ID),
-            FORIEGN KEY(MapView3_ID) REFERENCES MAP_VIEW(ID)
+            FOREIGN KEY(AISMessage_ID) REFERENCES AIS_MESSAGE(ID),
+            FOREIGN KEY(LastStaticData_ID) REFERENCES STATIC_DATA(AISMessage_ID),
+            FOREIGN KEY(MapView1_ID) REFERENCES MAP_VIEW(ID),
+            FOREIGN KEY(MapView2_ID) REFERENCES MAP_VIEW(ID),
+            FOREIGN KEY(MapView3_ID) REFERENCES MAP_VIEW(ID)
         );
         """
+        #print(deploy_statement)
         self.run(deploy_statement)
-
-    def run(self, query):
-        """
-        Run any query
-        :param query: an SQL query
-        :type query: str
-        :return: the result set as Python list of tuples
-        :rtype: list
-        """
-        mycursor = self.connection.cursor()
-        mycursor.execute(query)
-        result = mycursor.fetchall()
-        mycursor.close()
-        
-        return result
 
 
     def insert_message_batch(self, batch):
@@ -208,12 +210,13 @@ class DAO():
             except Exception as e:
                 print(e)
 
-        if len(batch) and inserted != 0:
+        if len(batch) == 1 and inserted != 0:
             return True
 
         return inserted
 
-    def delete_old_ais_messages(self): #How to test???
+    #Tests needed
+    def delete_old_ais_messages(self): 
         """
         Deletes all ais messages in the database more than 5 minutes older than current time
 
@@ -230,6 +233,7 @@ class DAO():
         list_of_timestamps = self.run(query)
 
         for item in list_of_timestamps:
+            #print(item-current_timestamp)
             if (item - current_timestamp) > 5:
                 query = "delete from AIS_MESSAGE where timestamp={};".format(item)
                 self.run(query)
@@ -250,6 +254,10 @@ class DAO():
         if len(length_check) != 9:
             print("Error: MMSI must be a 9 digit number. Returning empty string...")
             return ""
+
+        if type(MMSI) != int:
+            print("Error: MMSI must be an int")
+            return ""
         
         query = """
         select max(timestamp), MMSI, latitude, vessel_IMO 
@@ -261,10 +269,6 @@ class DAO():
         #print(results)
         return results
 
-    #This will not have the limit of 100 once we use the new database. The test database has too many records to not have the limit
-    #Remove "limit 100" before submitting!
-
-    #query for MMSIs and Timestamps, then use sub-query ("With messages as(sub-query)")
     def read_all_recent_ship_positions(self):
         """
         Reads all most recent positions of every ship in the database
@@ -273,30 +277,42 @@ class DAO():
         :rtype: array
         """
         query = """
-        select MMSI, latitude, longitude, Vessel_IMO 
+        select distinct MMSI, latitude, longitude, max(timestamp), Vessel_IMO 
         from ais_message, position_report 
-        where position_report.AISMessage_Id=ais_message.id order by timestamp limit 100;"""
+        where Id=AISMessage_Id group by MMSI order by timestamp limit 100;"""
 
         document = self.run(query)
         results = [tuple(str(item) for item in t) for t in document]
         return results
 
-    #Help? What does this query look like? My attempts give me an empty set
-    #Attempt: select MMSI, latitude, longitude, AISIMO, name from ais_message, position_report, static_data 
-    # where ais_message.id=position_report.AISMessage_Id and position_report.AISMessage_id=static_data.AISMessage_Id limit 10;
-    #results in an empty set?
     def read_vessel_info(self, MMSI, IMO='', name=''):
-        query = """
-        select MMSI, latitude, longitude, AISIMO, name 
-        from ais_message, position_report, static_data 
-        where ais_message.id=position_report.AISMessage_Id
-        limit 10;"""
+        if type(MMSI) != int:
+            print("incorrect type passed for one or more parameters")
+            return ""
+        
+        if IMO == '' and name=='':
+            query = """select vessel.MMSI, latitude, longitude, vessel.imo 
+            from ais_message, position_report, vessel 
+            where ais_message.id=position_report.aisMessage_id and ais_message.vessel_IMO=vessel.IMO 
+            and vessel.MMSI={} order by ais_message.timestamp desc limit 1;""".format(MMSI)
 
-        document= self.run(query)
+        if IMO != '' and name== '':
+            query = """select vessel.MMSI, latitude, longitude, vessel.imo 
+            from ais_message, position_report, vessel 
+            where ais_message.id=position_report.aisMessage_id and ais_message.vessel_IMO=vessel.IMO 
+            and vessel.MMSI={} and vessel.IMO={} order by ais_message.timestamp desc limit 1;""".format(MMSI,IMO)
+
+        if IMO != '' and name != '':
+            query = """select vessel.MMSI, latitude, longitude, vessel.imo 
+            from ais_message, position_report, vessel 
+            where ais_message.id=position_report.aisMessage_id and ais_message.vessel_IMO=vessel.IMO 
+            and vessel.MMSI={} and vessel.IMO={} and vessel.name='{}' order by ais_message.timestamp desc limit 1;""".format(MMSI,IMO,name)
+
+        document = self.run(query)
         results = [tuple(str(item) for item in t) for t in document]
-
         return results
 
+    #DONE
     def read_recent_positions_given_tile(self, tile_id):
         pass
 
@@ -322,16 +338,29 @@ class DAO():
 
         return results
 
-    def read_recent_positions_given_tile_and_port(self, port_name, country=''):
+    def read_recent_positions_given_tile_and_port(self, port_name='', country=''):
+        if port_name == '' and country == '':
+            print("Error: Cannot lookup port with no information given. Returning empty string...")
+            return ""
+
+        if type(port_name) != str:
+            print("Error: port_name must be a string")
+            return ""
+        
         if port_name == '' and country != '':
-            query = """select distinct port.name, MMSI, rpt.latitude, rpt.longitude, msg.Vessel_IMO, scale 
+            query = """select distinct MMSI, rpt.latitude, rpt.longitude, msg.Vessel_IMO, scale 
             from ais_message as msg, position_report as rpt, map_view as map, port 
-            where msg.id=rpt.aisMessage_id and scale=3 and port.country='{}' limit 10;""". format(port_name)
+            where msg.id=rpt.aisMessage_id and scale=3 and port.country='Denmark' limit 100;""".format(port_name)
 
         if port_name != '' and country == '':
-            query = """select distinct port.name, MMSI, rpt.latitude, rpt.longitude, msg.Vessel_IMO, scale 
+            query = """select distinct MMSI, rpt.latitude, rpt.longitude, msg.Vessel_IMO, scale 
             from ais_message as msg, position_report as rpt, map_view as map, port 
-            where msg.id=rpt.aisMessage_id and scale=3 and port.name='{}' limit 100;""". format(port_name)
+            where msg.id=rpt.aisMessage_id and scale=3 and port.name='{}' limit 10;""".format(port_name)
+
+        document= self.run(query)
+        results = [tuple(str(item) for item in t) for t in document]
+
+        return results
 
     def read_last_five_positions_given_MMSI(self, MMSI):
         """
@@ -342,6 +371,10 @@ class DAO():
         :return: an array containing all results
         :rtype: array
         """
+        if type(MMSI) != int:
+            print('Error: MMSI must be an int')
+            return ""
+        
         length_check = str(MMSI)
         if len(length_check) != 9:
             print("Error: MMSI must be a 9 digit number. Returning empty string...")
@@ -363,10 +396,12 @@ class DAO():
     def read_recent_ship_positions_headed_to_port(self, port_name, country=''):
         pass
 
+    #DONE
     def lookup_contained_tiles(self, tile_id):
         pass
 
-    def get_tile_PNG(self, tile_id): 
+    #DONE
+    def get_tile_PNG(self, tile_id):
         pass
 
             
@@ -425,6 +460,7 @@ class StaticData( Message ):
         return "('{}', NULL,'{}', NULL, NULL,'{}','{}', NULL, NULL,'{}', NULL, NULL)".format(self.IMO, self.name, self.length, self.breadth, self.vessel_type)
 
 
+#Method tests seperated by '#'
 class TMB_test(unittest.TestCase):
     
     multi_batch = """[ {\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"Class A\",\"MMSI\":304858000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[55.218332,13.371672]},\"Status\":\"Under way using engine\",\"SoG\":10.8,\"CoG\":94.3,\"Heading\":97},
@@ -436,6 +472,7 @@ class TMB_test(unittest.TestCase):
 
     single_message = "[{\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"Class A\",\"MMSI\":304858000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[55.218332,13.371672]},\"Status\":\"Under way using engine\",\"SoG\":10.8,\"CoG\":94.3,\"Heading\":97}]"
 
+    ####################################################################################
     def test_insert_message_batch_interface_1(self):
         """
         Function `insert_message_batch` takes an array of messages as an input.
@@ -470,15 +507,23 @@ class TMB_test(unittest.TestCase):
         tmb = DAO(True)
         result = tmb.insert_message_batch(self.single_message)
         self.assertTrue(result)
-    
-    
-    def test_read_recent_position_given_MMSI_interface_fail(self):
+
+    ####################################################################################
+    def test_read_recent_position_given_MMSI_interface_fail_1(self):
         """
         Function `read_recent_position_given_MMSI` fails nicely if no parameter is passed
         """
-        MMSI = 1000
+        MMSI = 1234567
         tmb = DAO(True)
         value = tmb.read_recent_position_given_MMSI(MMSI)
+        self.assertTrue(value=="")
+
+    def test_read_recent_position_given_MMSI_interface_fail_2(self):
+        """
+        Function `read_recent_position_given_MMSI` fails nicely if no parameter is passed
+        """
+        tmb = DAO(True)
+        value = tmb.read_recent_position_given_MMSI('TEST')
         self.assertTrue(value=="")
     
     def test_read_recent_position_given_MMSI_integration(self):
@@ -489,15 +534,21 @@ class TMB_test(unittest.TestCase):
         result = tmb.read_recent_position_given_MMSI(219007155)
         self.assertEqual(result, [('2020-11-18 02:38:20', '219007155', '54.947323', 'None')])
 
-
+    ####################################################################################
     def test_read_all_recent_ship_positions_integration(self):
         """
         Function `read_all_recent_ship_positions` returns the result of the query as an array
         """
         tmb=DAO()
         result = tmb.read_all_recent_ship_positions()
-        self.assertEqual(result[2], ('265866000', '54.763183', '12.415067', '9217242'))
+        self.assertEqual(result[2], ('265866000', '54.763183', '12.415067', '2020-11-18 02:38:14', '9217242'))
 
+    ####################################################################################
+    def test_read_last_five_positions_given_MMSI_interface(self):
+        tmb=DAO(True)
+        result = tmb.read_last_five_positions_given_MMSI('hello')
+        self.assertEqual(result, "")
+    
     def test_read_last_five_positions_given_MMSI_integration(self):
         """
         Function `read_last_five_positions_given_MMSI` returns the result of the query as an array
@@ -506,11 +557,12 @@ class TMB_test(unittest.TestCase):
         result = tmb.read_last_five_positions_given_MMSI(219007155)
         self.assertEqual(result[0], ('2020-11-18 02:38:20', '219007155', '54.947338', '11.107798', 'None') )
 
+    ####################################################################################
     def test_read_all_ports_matching_name_interface(self):
         """
         Function `read_all_ports_matching_name` fails nicely if no parameters are passed
         """
-        tmb = DAO()
+        tmb = DAO(True)
         result = tmb.read_all_ports_matching_name()
         self.assertEqual(result, "")
 
@@ -522,21 +574,55 @@ class TMB_test(unittest.TestCase):
         result = tmb.read_all_ports_matching_name(port_name='Ensted')
         self.assertEqual(result, [('4378', 'Ensted', 'Denmark', '55.022778', '9.439167')])
 
-    def test_read_vessel_info_integration(self):
-        """
-        Function 'read_vessel_info' returns the result of the query as an array
-        """
+    ####################################################################################
+    def test_read_recent_positions_given_tile_and_port_interface_fail_1(self):
+        """Function 'read_recent_positions_given_tile_and_port' fails nicely if no paramaters are passed"""
+        tmb = DAO(True)
+        result = tmb.read_recent_positions_given_tile_and_port()
+        self.assertEqual(result, '')
+
+    def test_read_recent_positions_given_tile_and_port_interface_fail_2(self):
+        """Function 'read_recent_positions_given_tile_and_port' fails nicely if incorrect parameter types are passed"""
+        tmb = DAO(True)
+        result = tmb.read_recent_positions_given_tile_and_port(port_name=1234)
+        self.assertEqual(result, '')
+
+    def test_read_recent_positions_given_tile_and_port_integration_1(self):
         tmb = DAO()
-        result = tmb.read_vessel_info()
-        self.assertEqual(result, [()])
+        result =tmb.read_recent_positions_given_tile_and_port(port_name='Ensted')
+        self.assertEqual(result[1], (('304858000', '55.218332', '13.371672', '8214358', '3')))
+    
+    def test_read_recent_positions_given_tile_and_port_integration_2(self):
+        tmb = DAO()
+        result =tmb.read_recent_positions_given_tile_and_port(country='Denmark')
+        self.assertEqual(result[0], ('219007155', '54.947323', '11.107765', 'None', '3'))
+
+    ####################################################################################
+    def test_read_vessel_info_interface_fail(self):
+        tmb=DAO(True)
+        result = tmb.read_vessel_info('hello')
+        self.assertEqual(result, "")
+    
+    def test_read_vessel_info_integration_1(self):
+        tmb = DAO()
+        result = tmb.read_vessel_info(304858000)
+        self.assertEqual(result, [('304858000', '55.185158', '14.195187', '8214358')])
+
+    def test_read_vessel_info_integration_2(self):
+        tmb = DAO()
+        result = tmb.read_vessel_info(304858000, IMO=8214358)
+        self.assertEqual(result, [('304858000', '55.185158', '14.195187', '8214358')])
+
+    def test_read_vessel_info_integration_3(self):
+        tmb = DAO()
+        result = tmb.read_vessel_info(304858000, IMO=8214358, name='St.Pauli')
+        self.assertEqual(result, [('304858000', '55.185158', '14.195187', '8214358')])
 """
+
     def test_delete_old_message(self):
         pass
 
     def test_read_recent_positions_given_tile(self):
-        pass
-
-    def test_read_recent_positions_given_tile_and_port(self):
         pass
 
     def test_read_recent_ship_positions_headed_to_port_ID(self):
@@ -551,8 +637,6 @@ class TMB_test(unittest.TestCase):
     def test_get_tile_PNG(self):
         pass
 """
-    
-
 
 if __name__ == '__main__':
     unittest.main()

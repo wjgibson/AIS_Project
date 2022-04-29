@@ -405,6 +405,10 @@ class DAO():
         return results
 
     def read_recent_ship_positions_headed_to_port_ID(self, port_id):
+        if type(port_id) != int:
+            print("Error: port_id must be an int. Returning empty string")
+            return ""
+        
         query = """select distinct port.id, MMSI, rpt.latitude, rpt.longitude, Vessel_IMO 
         from ais_message, static_data, position_report as rpt, port 
         where ais_message.id=static_data.AISMessage_id and static_data.AISDestination=port.name and port.id={} limit 100;""".format(port_id)
@@ -413,8 +417,28 @@ class DAO():
         results = [tuple(str(item) for item in t) for t in document]
         return results
 
-    def read_recent_ship_positions_headed_to_port(self, port_name, country=''):
-        pass
+    def read_recent_ship_positions_headed_to_port(self, port_name='', country=''):
+        if type(port_name) != str:
+                print("Error: port_name must be a string. Returning empty string")
+                return ""
+
+        if type(country) != str:
+                print("Error: country must be a string. Returning empty string")
+                return ""
+        
+        if country != '':
+            query = """select distinct port.id, MMSI, rpt.latitude, rpt.longitude, Vessel_IMO 
+            from ais_message, static_data, position_report as rpt, port 
+            where ais_message.id=static_data.AISMessage_id and static_data.AISDestination=port.name and port.country='{}' limit 100;""".format(country)
+        
+        if country == '':
+            query = """select distinct port.id, MMSI, rpt.latitude, rpt.longitude, Vessel_IMO 
+            from ais_message, static_data, position_report as rpt, port 
+            where ais_message.id=static_data.AISMessage_id and static_data.AISDestination=port.name and port.name='{}' limit 100;""".format(port_name)
+
+        document = self.run(query)
+        results = [tuple(str(item) for item in t) for t in document]
+        return results
 
     def lookup_contained_tiles(self, tile_id):
         if type(tile_id) != int:
@@ -658,23 +682,43 @@ class TMB_test(unittest.TestCase):
         tmb = DAO()
         result = tmb.read_recent_positions_given_tile("38F7")
         self.assertEqual(result[0], ('664444000', '7.036235', '54.702618', '2020-11-18 00:28:15'))
+        
+    ####################################################################################
+    def test_read_recent_ship_positions_headed_to_port_ID_interface(self):
+        tmb = DAO(True)
+        result = tmb.read_recent_ship_positions_headed_to_port_ID("1234")
+        self.assertEqual(result, "")
 
+    def test_read_recent_ship_positions_headed_to_port_ID_integration(self):
+        tmb = DAO()
+        result = tmb.read_recent_ship_positions_headed_to_port_ID(381)
+        self.assertEqual(result, "")
+
+    ####################################################################################
+    def test_read_recent_ship_positions_headed_to_port_interface_1(self):
+        tmb = DAO()
+        result = tmb.read_recent_ship_positions_headed_to_port(port_name=1234)
+        self.assertEqual(result, "")
+
+    def test_read_recent_ship_positions_headed_to_port_interface_2(self):
+        tmb = DAO()
+        result = tmb.read_recent_ship_positions_headed_to_port(country=1234)
+        self.assertEqual(result, "")
+
+    def test_read_recent_ship_positions_headed_to_port_interface_3(self):
+        tmb = DAO()
+        result = tmb.read_recent_ship_positions_headed_to_port(port_name=1234)
+        self.assertEqual(result, "")
+    ####################################################################################
     def test_lookup_contained_tiles(self):
         pass
-
+    ####################################################################################
     def test_get_tile_PNG(self):
         pass
-"""
-
+    ####################################################################################
     def test_delete_old_message(self):
         pass
 
-    def test_read_recent_ship_positions_headed_to_port_ID(self):
-        pass
-
-    def test_read_recent_ship_positions_headed_to_port(self):
-        pass
-"""
 
 if __name__ == '__main__':
     unittest.main()

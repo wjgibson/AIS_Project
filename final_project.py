@@ -225,18 +225,18 @@ class DAO():
         :rtype: int
         """
 
-        current_timestamp = datetime.timestamp(datetime.now())
+        current_minute = 37
         #print(current_timestamp)
 
         deleted = 0
         
-        query = "select timestamp from AIS_MESSAGE;"
-        list_of_timestamps = self.run(query)
+        query = "select MINUTE(timestamp) from AIS_MESSAGE;"
+        timestamp_minute = self.run(query)
 
-        for item in list_of_timestamps:
+        for item in timestamp_minute:
             #print(item-current_timestamp)
-            if (item - current_timestamp) > 5:
-                query = "delete from AIS_MESSAGE where timestamp={};".format(item)
+            if (current_minute-timestamp_minute) > 5:
+                query = "delete from AIS_MESSAGE where MINUTE(timestamp)={};".format(item)
                 self.run(query)
                 deleted+=1
         
@@ -418,6 +418,10 @@ class DAO():
         return results
 
     def read_recent_ship_positions_headed_to_port(self, port_name='', country=''):
+        if port_name == '' and country == '':
+            print("Error: cannot perform query with no information given. Retrurning empty string...")
+            return ""
+        
         if type(port_name) != str:
                 print("Error: port_name must be a string. Returning empty string")
                 return ""
@@ -696,18 +700,23 @@ class TMB_test(unittest.TestCase):
 
     ####################################################################################
     def test_read_recent_ship_positions_headed_to_port_interface_1(self):
-        tmb = DAO()
+        tmb = DAO(True)
         result = tmb.read_recent_ship_positions_headed_to_port(port_name=1234)
         self.assertEqual(result, "")
 
     def test_read_recent_ship_positions_headed_to_port_interface_2(self):
-        tmb = DAO()
+        tmb = DAO(True)
         result = tmb.read_recent_ship_positions_headed_to_port(country=1234)
         self.assertEqual(result, "")
 
     def test_read_recent_ship_positions_headed_to_port_interface_3(self):
+        tmb = DAO(True)
+        result = tmb.read_recent_ship_positions_headed_to_port()
+        self.assertEqual(result, "")
+
+    def test_read_recent_ship_positions_headed_to_port_integration(self):
         tmb = DAO()
-        result = tmb.read_recent_ship_positions_headed_to_port(port_name=1234)
+        result = tmb.read_recent_ship_positions_headed_to_port(port_name='Nyborg')
         self.assertEqual(result, "")
     ####################################################################################
     def test_lookup_contained_tiles(self):
@@ -721,4 +730,6 @@ class TMB_test(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    print("Executing all tests. This might take a while so sit tight!")
+    print("----------------------------------------------------------")
     unittest.main()

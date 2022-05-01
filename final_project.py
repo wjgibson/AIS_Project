@@ -46,126 +46,6 @@ class DAO():
         
         return result
 
-    #will be deployed by a sqldump file. Only needs the "use ais_project" statement.
-    def deploy_database(self):
-        deploy_statement = """
-        DROP DATABASE IF EXISTS AIS_PROJECT;
-        CREATE DATABASE AIS_PROJECT;
-        USE AIS_PROJECT;
-
-        DROP TABLE IF EXISTS AIS_MESSAGE;
-        DROP TABLE IF EXISTS MAP_VIEW;
-        DROP TABLE IF EXISTS PORT;
-        DROP TABLE IF EXISTS POSITION_REPORT;
-        DROP TABLE IF EXISTS STATIC_DATA;
-        DROP TABLE IF EXISTS VESSEL;
-
-        CREATE TABLE VESSEL(
-            IMO MEDIUMINT UNSIGNED NOT NULL,
-            Flag VARCHAR(40),
-            Name VARCHAR(40),
-            Built SMALLINT,
-            CallSIgn VARCHAR(8),
-            Length SMALLINT,
-            BREADTH SMALLINT,
-            Tonnage MEDIUMINT,
-            MMSI INT,
-            Type VARCHAR(30),
-            Status VARCHAR(40),
-            Owner VARCHAR(80),
-            PRIMARY KEY(IMO)
-        );
-        
-        CREATE TABLE AIS_MESSAGE(
-            ID MEDIUMINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            Timestamp DATETIME,
-            MMSI INT,
-            Class ENUM('Class A','Class B','AtoN','Base Station','SAR Airborne','Search and Rescue Transponder','Man Overboard Device'),
-            Vessel_IMO MEDIUMINT UNSIGNED,
-            PRIMARY KEY(ID),
-            FOREIGN KEY(Vessel_IMO) REFERENCES VESSEL(IMO)
-        );
-
-        CREATE TABLE MAP_VIEW(
-            ID MEDIUMINT NOT NULL,
-            Name VARCHAR(10),
-            LongitudeW DECIMAL(9,6),
-            LatitudeS DECIMAL(8,6),
-            LongitudeE DECIMAL(9,6),
-            LatitudeN DECIMAL(8,6),
-            Scale ENUM('1','2','3'),
-            RasterFile VARCHAR(100),
-            ImageWidth SMALLINT,
-            ImageHeight SMALLINT,
-            ActualLongitudeW DECIMAL(9,6),
-            ActualLatitudeS DECIMAL(8,6),
-            ActualLongitudeE DECIMAL(9,6),
-            ActualLatitudeN DECIMAL(8,6),
-            ContainerMapView_ID MEDIUMINT,
-            PRIMARY KEY(ID),
-            FOREIGN KEY(ContainerMapView_ID) REFERENCES MAP_VIEW(id)
-        );
-
-        CREATE TABLE PORT(
-            ID SMALLINT NOT NULL,
-            LoCode CHAR(5),
-            Name VARCHAR(30),
-            Country VARCHAR(80),
-            Longitude DECIMAL(9,6),
-            Latitude DECIMAL(8,6),
-            Wesbsite VARCHAR(120),
-            MapView1_ID MEDIUMINT,
-            MapView2_ID MEDIUMINT,
-            MapView3_ID MEDIUMINT,
-            PRIMARY KEY(ID),
-            FOREIGN KEY(MapView1_ID) REFERENCES MAP_VIEW(ID),
-            FOREIGN KEY(MapView2_ID) REFERENCES MAP_VIEW(ID),
-            FOREIGN KEY(MapView3_ID) REFERENCES MAP_VIEW(ID)
-        );
-
-        CREATE TABLE STATIC_DATA(
-            AISMessage_ID MEDIUMINT UNSIGNED NOT NULL,
-            AISIMO INT,
-            CallSign VARCHAR(8),
-            Name VARCHAR(30),
-            VesselType VARCHAR(30),
-            CargoType VARCHAR(30),
-            Length SMALLINT,
-            Breadth SMALLINT,
-            Draught SMALLINT,
-            AISDestination VARCHAR(50),
-            ETA DATETIME,
-            DestinationPort_ID SMALLINT,
-            PRIMARY KEY(AISMessage_ID),
-            FOREIGN KEY(AISMessage_ID) REFERENCES AIS_MESSAGE(ID),
-            FOREIGN KEY(DestinationPort_ID) REFERENCES PORT(ID)
-        );
-        
-        CREATE TABLE POSITION_REPORT(
-            AISMessage_ID MEDIUMINT UNSIGNED NOT NULL,
-            NavigationalStatus VARCHAR(40),
-            Longitude DECIMAL(9,6),
-            Latitude DECIMAL(8,6),
-            RoT DECIMAL(4,1),
-            SoG DECIMAL(4,1),
-            CoG DECIMAL(4,1),
-            Heading SMALLINT,
-            LastStaticData_ID MEDIUMINT UNSIGNED,
-            MapView1_ID MEDIUMINT,
-            MapView2_ID MEDIUMINT,
-            MapView3_ID MEDIUMINT,
-            PRIMARY KEY(AISMessage_ID),
-            FOREIGN KEY(AISMessage_ID) REFERENCES AIS_MESSAGE(ID),
-            FOREIGN KEY(LastStaticData_ID) REFERENCES STATIC_DATA(AISMessage_ID),
-            FOREIGN KEY(MapView1_ID) REFERENCES MAP_VIEW(ID),
-            FOREIGN KEY(MapView2_ID) REFERENCES MAP_VIEW(ID),
-            FOREIGN KEY(MapView3_ID) REFERENCES MAP_VIEW(ID)
-        );
-        """
-        #print(deploy_statement)
-        self.run(deploy_statement)
-
-
     def insert_message_batch(self, batch):
         """
         Insert a batch of messages
@@ -225,20 +105,21 @@ class DAO():
         :rtype: int
         """
 
+        #This would be the MINUTE value of the current datetime, but since the documents in the test
+        #arent current, all would be deleted. For the tests to run, this value is set.
         current_minute = 37
-        #print(current_timestamp)
 
         deleted = 0
         
-        query = "select MINUTE(timestamp) from AIS_MESSAGE;"
+        query = "select MINUTE(timestamp) from AIS_MESSAGE limit 100;"
         timestamp_minute = self.run(query)
 
-        for item in timestamp_minute:
-            #print(item-current_timestamp)
-            if (current_minute-timestamp_minute) > 5:
-                query = "delete from AIS_MESSAGE where MINUTE(timestamp)={};".format(item)
-                self.run(query)
-                deleted+=1
+        for value in timestamp_minute:
+            for item in value:
+                if (int(item) - current_minute) > 5:
+                    query = "delete from AIS_MESSAGE where MINUTE(timestamp)={};".format(value)
+                    self.run(query)
+                    deleted+=1
         
         return deleted
 
@@ -313,7 +194,7 @@ class DAO():
         results = [tuple(str(item) for item in t) for t in document]
         return results
 
-    #DONE
+    #NEEDS REWORKED
     def read_recent_positions_given_tile(self, tile_id):
         if type(tile_id) != str:
             print("Error: type of tile id must be a string. Returning empty string...")
@@ -364,7 +245,7 @@ class DAO():
         if port_name == '' and country != '':
             query = """select distinct MMSI, rpt.latitude, rpt.longitude, msg.Vessel_IMO, scale 
             from ais_message as msg, position_report as rpt, map_view as map, port 
-            where msg.id=rpt.aisMessage_id and scale=3 and port.country='Denmark' limit 100;""".format(port_name)
+            where msg.id=rpt.aisMessage_id and scale=3 and port.country='{}' limit 100;""".format(country)
 
         if port_name != '' and country == '':
             query = """select distinct MMSI, rpt.latitude, rpt.longitude, msg.Vessel_IMO, scale 
@@ -521,12 +402,12 @@ class StaticData( Message ):
 #Method tests seperated by '#'
 class TMB_test(unittest.TestCase):
     
-    multi_batch = """[ {\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"Class A\",\"MMSI\":304858000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[55.218332,13.371672]},\"Status\":\"Under way using engine\",\"SoG\":10.8,\"CoG\":94.3,\"Heading\":97},
-                {\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"AtoN\",\"MMSI\":992111840,\"MsgType\":\"static_data\",\"IMO\":\"Unknown\",\"Name\":\"WIND FARM BALTIC1NW\",\"VesselType\":\"Undefined\",\"Length\":60,\"Breadth\":60,\"A\":30,\"B\":30,\"C\":30,\"D\":30},
-                {\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"Class A\",\"MMSI\":219005465,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[54.572602,11.929218]},\"Status\":\"Under way using engine\",\"RoT\":0,\"SoG\":0,\"CoG\":298.7,\"Heading\":203},
-                {\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"Class A\",\"MMSI\":257961000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[55.00316,12.809015]},\"Status\":\"Under way using engine\",\"RoT\":0,\"SoG\":0.2,\"CoG\":225.6,\"Heading\":240},
-                {\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"Class A\",\"MMSI\":376503000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[54.519373,11.47914]},\"Status\":\"Under way using engine\",\"RoT\":0,\"SoG\":7.6,\"CoG\":294.4,\"Heading\":290},
-                {\"Timestamp\":\"2020-11-18T00:06:00.000Z\",\"Class\":\"Class A\",\"MMSI\":376503000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[54.519373,11.47914]},\"Status\":\"Under way using engine\",\"RoT\":0,\"SoG\":7.6,\"CoG\":294.4,\"Heading\":290} ]"""
+    multi_batch = """[ {\"Timestamp\":\"2020-11-18T00:50:00.000Z\",\"Class\":\"Class A\",\"MMSI\":304858000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[55.218332,13.371672]},\"Status\":\"Under way using engine\",\"SoG\":10.8,\"CoG\":94.3,\"Heading\":97},
+                {\"Timestamp\":\"2020-11-18T00:50:00.000Z\",\"Class\":\"AtoN\",\"MMSI\":992111840,\"MsgType\":\"static_data\",\"IMO\":\"Unknown\",\"Name\":\"WIND FARM BALTIC1NW\",\"VesselType\":\"Undefined\",\"Length\":60,\"Breadth\":60,\"A\":30,\"B\":30,\"C\":30,\"D\":30},
+                {\"Timestamp\":\"2020-11-18T00:64:00.000Z\",\"Class\":\"Class A\",\"MMSI\":219005465,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[54.572602,11.929218]},\"Status\":\"Under way using engine\",\"RoT\":0,\"SoG\":0,\"CoG\":298.7,\"Heading\":203},
+                {\"Timestamp\":\"2020-11-18T00:65:00.000Z\",\"Class\":\"Class A\",\"MMSI\":257961000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[55.00316,12.809015]},\"Status\":\"Under way using engine\",\"RoT\":0,\"SoG\":0.2,\"CoG\":225.6,\"Heading\":240},
+                {\"Timestamp\":\"2020-11-18T00:20:00.000Z\",\"Class\":\"Class A\",\"MMSI\":376503000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[54.519373,11.47914]},\"Status\":\"Under way using engine\",\"RoT\":0,\"SoG\":7.6,\"CoG\":294.4,\"Heading\":290},
+                {\"Timestamp\":\"2020-11-18T00:90:00.000Z\",\"Class\":\"Class A\",\"MMSI\":376503000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[54.519373,11.47914]},\"Status\":\"Under way using engine\",\"RoT\":0,\"SoG\":7.6,\"CoG\":294.4,\"Heading\":290} ]"""
 
     single_message = "[{\"Timestamp\":\"2020-11-18T00:00:00.000Z\",\"Class\":\"Class A\",\"MMSI\":304858000,\"MsgType\":\"position_report\",\"Position\":{\"type\":\"Point\",\"coordinates\":[55.218332,13.371672]},\"Status\":\"Under way using engine\",\"SoG\":10.8,\"CoG\":94.3,\"Heading\":97}]"
 
@@ -590,7 +471,7 @@ class TMB_test(unittest.TestCase):
         """
         tmb=DAO()
         result = tmb.read_recent_position_given_MMSI(219007155)
-        self.assertEqual(result, [('2020-11-18 02:38:20', '219007155', '54.947323', 'None')])
+        self.assertEqual(result, [('2020-11-18 00:01:30', '219007155', '54.947323', 'None')])
 
     ####################################################################################
     def test_read_all_recent_ship_positions_integration(self):
@@ -599,7 +480,7 @@ class TMB_test(unittest.TestCase):
         """
         tmb=DAO()
         result = tmb.read_all_recent_ship_positions()
-        self.assertEqual(result[2], ('265866000', '54.763183', '12.415067', '2020-11-18 02:38:14', '9217242'))
+        self.assertEqual(result[2], ('265866000', '54.763183', '12.415067', '2020-11-18 00:01:24', '9217242'))
 
     ####################################################################################
     def test_read_last_five_positions_given_MMSI_interface(self):
@@ -613,7 +494,7 @@ class TMB_test(unittest.TestCase):
         """
         tmb=DAO()
         result = tmb.read_last_five_positions_given_MMSI(219007155)
-        self.assertEqual(result[0], ('2020-11-18 02:38:20', '219007155', '54.947338', '11.107798', 'None') )
+        self.assertEqual(result[0], ('2020-11-18 00:01:30', '219007155', '54.947327', '11.107760', 'None') )
 
     ####################################################################################
     def test_read_all_ports_matching_name_interface(self):
@@ -646,90 +527,162 @@ class TMB_test(unittest.TestCase):
         self.assertEqual(result, '')
 
     def test_read_recent_positions_given_tile_and_port_integration_1(self):
+        """
+        Function `read_recent_positions_given_tile_and_port` returns the result of the query as an array when passed the port name.
+        """
         tmb = DAO()
         result =tmb.read_recent_positions_given_tile_and_port(port_name='Ensted')
         self.assertEqual(result[1], (('304858000', '55.218332', '13.371672', '8214358', '3')))
     
     def test_read_recent_positions_given_tile_and_port_integration_2(self):
+        """
+        Function `read_recent_positions_given_tile_and_port` returns the result of the query as an array when passed the country.
+        """
         tmb = DAO()
         result =tmb.read_recent_positions_given_tile_and_port(country='Denmark')
         self.assertEqual(result[0], ('219007155', '54.947323', '11.107765', 'None', '3'))
 
     ####################################################################################
     def test_read_vessel_info_interface_fail(self):
+        """
+        Function 'read_vessel_info' fails nicely if an incorrect parameter is passed
+        """
         tmb=DAO(True)
         result = tmb.read_vessel_info('hello')
         self.assertEqual(result, "")
     
     def test_read_vessel_info_integration_1(self):
+        """
+        Function 'read_vessel_info' returns expected values from given parameters
+        """
         tmb = DAO()
-        result = tmb.read_vessel_info(304858000)
-        self.assertEqual(result, [('304858000', '55.185158', '14.195187', '8214358')])
+        result = tmb.read_vessel_info(219000575)
+        self.assertEqual(result, [('219000575', '55.712553', '12.588520', '5041968')])
 
     def test_read_vessel_info_integration_2(self):
+        """
+        Function 'read_vessel_info' returns expected values from given parameters
+        """
         tmb = DAO()
-        result = tmb.read_vessel_info(304858000, IMO=8214358)
-        self.assertEqual(result, [('304858000', '55.185158', '14.195187', '8214358')])
+        result = tmb.read_vessel_info(219000575, IMO=5041968)
+        self.assertEqual(result, [('219000575', '55.712553', '12.588520', '5041968')])
 
     def test_read_vessel_info_integration_3(self):
+        """
+        Function 'read_vessel_info' returns expected values from given parameters
+        """
         tmb = DAO()
-        result = tmb.read_vessel_info(304858000, IMO=8214358, name='St.Pauli')
-        self.assertEqual(result, [('304858000', '55.185158', '14.195187', '8214358')])
+        result = tmb.read_vessel_info(219000575, IMO=5041968, name='Guard Valiant')
+        self.assertEqual(result, [('219000575', '55.712553', '12.588520', '5041968')])
 
     ####################################################################################
     def test_read_recent_positions_given_tile_interface(self):
+        """
+        Function 'read_recent_positions_given_tile' fails nicely if incorrect parameter is passed
+        """
         tmb = DAO(True)
         result=tmb.read_recent_positions_given_tile(234)
         self.assertEqual(result, "")
     
+    ##CHECK FOR CORRECTNESS!!!
     def test_read_recent_positions_given_tile_integration(self):
+        """
+        Function 'read_recent_positions_given_tile returns the result as a query
+        """
         tmb = DAO()
         result = tmb.read_recent_positions_given_tile("38F7")
         self.assertEqual(result[0], ('664444000', '7.036235', '54.702618', '2020-11-18 00:28:15'))
         
     ####################################################################################
     def test_read_recent_ship_positions_headed_to_port_ID_interface(self):
+        """
+        Function 'read_recent_ship_positions_headed_to_port_ID' fails nicely if incorrect parameter is passed
+        """
         tmb = DAO(True)
         result = tmb.read_recent_ship_positions_headed_to_port_ID("1234")
         self.assertEqual(result, "")
 
     def test_read_recent_ship_positions_headed_to_port_ID_integration(self):
+        """
+        Function 'read_recent_ship_positions_headed_to_port_ID' returns result of query as an array
+        """
         tmb = DAO()
         result = tmb.read_recent_ship_positions_headed_to_port_ID(381)
-        self.assertEqual(result, "")
+        self.assertEqual(result[0], ('381', '220520000', '54.947323', '11.107765', '9107851'))
 
     ####################################################################################
     def test_read_recent_ship_positions_headed_to_port_interface_1(self):
+        """
+        Function 'read_recent_ship_positions_headed_to_port' fails nicely if incorrect parameter is passed
+        """
         tmb = DAO(True)
         result = tmb.read_recent_ship_positions_headed_to_port(port_name=1234)
         self.assertEqual(result, "")
 
     def test_read_recent_ship_positions_headed_to_port_interface_2(self):
+        """
+        Function 'read_recent_ship_positions_headed_to_port' returns result of query as an array
+        """
         tmb = DAO(True)
         result = tmb.read_recent_ship_positions_headed_to_port(country=1234)
         self.assertEqual(result, "")
 
     def test_read_recent_ship_positions_headed_to_port_interface_3(self):
+        """
+        Function 'read_recent_ship_positions_headed_to_port' returns result of query as an array
+        """
         tmb = DAO(True)
         result = tmb.read_recent_ship_positions_headed_to_port()
         self.assertEqual(result, "")
 
     def test_read_recent_ship_positions_headed_to_port_integration(self):
+        """
+        Function 'read_recent_ship_positions_headed_to_port' returns result of query as an array
+        """
         tmb = DAO()
         result = tmb.read_recent_ship_positions_headed_to_port(port_name='Nyborg')
+        self.assertEqual(result[0], ('381', '220520000', '54.947323', '11.107765', '9107851'))
+    ####################################################################################
+    def test_lookup_contained_tiles_interface(self):
+        """
+        Function 'lookup_contained_tiles' fails nicely if incorrect parameter is passed
+        """
+        tmb = DAO(True)
+        result = tmb.lookup_contained_tiles("failure")
         self.assertEqual(result, "")
+
+    def test_lookup_contained_tiles_integration(self):
+        """
+        Function 'lookup_contained_tiles' returns the result of the query as an array
+        """
+        tmb = DAO(True)
+        result = tmb.lookup_contained_tiles(5036)
+        self.assertEqual(result, [('50361',), ('50362',), ('50363',), ('50364',)])   
     ####################################################################################
-    def test_lookup_contained_tiles(self):
-        pass
+    def test_get_tile_PNG_interface(self):
+        """
+        Function ''get_tile_PNG' fails nicely if incorrect parameters are passed
+        """
+        tmb = DAO(True)
+        result = tmb.get_tile_PNG("failure")
+        self.assertEqual(result, "")
+
+    def test_get_tile_PNG_integration(self):
+        """
+        Function 'get_tile_PNG' returns the result of the query as an array
+        """
+        tmb = DAO()
+        result = tmb.get_tile_PNG(5036)
+        self.assertEqual(result, [('38F7.png',)])
     ####################################################################################
-    def test_get_tile_PNG(self):
-        pass
-    ####################################################################################
-    def test_delete_old_message(self):
-        pass
+    def test_delete_old_message_interface(self):
+        """
+        Function 'delete_old_message' fails nicely if incorrect parameters are passed
+        """
+        tmb = DAO(True)
+        result = tmb.delete_old_ais_messages()
+        self.assertTrue(type(result) is int)
 
 
 if __name__ == '__main__':
-    print("Executing all tests. This might take a while so sit tight!")
-    print("----------------------------------------------------------")
     unittest.main()

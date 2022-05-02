@@ -13,6 +13,6 @@ To run this program, (all commands made in cmd.exe on windows. Mac syntax is sim
 7) In the terminal, type the following "mysql -u {your username} -p project_database < project_database.mysql".
 8) Once the database finishes deploying, run the "final_project.py" file in python terminal (python.exe final_project.py).
 9) Error statements will print, showing method exceptions that we have checked for.
-10) See that all 32 tests pass!
+10) See that all 32 interface and integration tests pass!
 
 -Will, Andrew, and Jay
